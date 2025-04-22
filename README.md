@@ -38,22 +38,6 @@ Supported values:
 - `ddog-gov.com`
 - `ap1.datadoghq.com`
 
-## Example: Frontend SDK Configuration
-
-In your frontend JavaScript, initialize the Datadog RUM SDK to use the proxy:
-
-```js
-import { datadogRum } from '@datadog/browser-rum';
-
-datadogRum.init({
-  applicationId: '<DATADOG_APPLICATION_ID>',
-  clientToken: '<DATADOG_CLIENT_TOKEN>',
-  site: '<DATADOG_SITE>', // e.g., 'datadoghq.com'
-  proxy: 'http://<YOUR_PROXY_HOST>:3000/d',
-});
-```
-
-Replace `<YOUR_PROXY_HOST>`, `<DATADOG_APPLICATION_ID>`, `<DATADOG_CLIENT_TOKEN>`, and `<DATADOG_SITE>` with your actual values.
 
 ## Example: Test the Proxy with curl
 
