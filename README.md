@@ -27,7 +27,7 @@ docker run -p 3000:3000 datadog-rum-proxy
 By default, the proxy forwards to the US1 site (`datadoghq.com`). To use another site, set the `DATADOG_SITE` environment variable:
 
 ```sh
-docker run -p 3000:3000 -e DATADOG_SITE=datadoghq.eu datadog-rum-proxy
+docker run -p 3000:3000 -e DATADOG_SITE=datadoghq.com jlmorton/datadog-rum-proxy:1.0
 ```
 
 Supported values:
