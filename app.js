@@ -8,13 +8,14 @@ const PORT = process.env.PORT || 3000;
 // 1) Map DATADOG_SITE to the correct intake origin
 const SITE = process.env.DATADOG_SITE || 'datadoghq.com';
 const ORIGINS = {
-  'datadoghq.com':   'https://browser-intake-datadoghq.com',    // US1 (default)
+  'datadoghq.com':   'https://browser-intake-datadoghq.com',      // US1 (default)
   'us3.datadoghq.com':'https://browser-intake-us3-datadoghq.com', // US3
   'us5.datadoghq.com':'https://browser-intake-us5-datadoghq.com', // US5
-  'datadoghq.eu':    'https://browser-intake-datadoghq.eu',      // EU1
-  'ddog-gov.com':    'https://browser-intake-ddog-gov.com',      // US1-FED
+  'datadoghq.eu':    'https://browser-intake-datadoghq.eu',       // EU1
+  'ddog-gov.com':    'https://browser-intake-ddog-gov.com',       // US1-FED
   'ap1.datadoghq.com':'https://browser-intake-ap1-datadoghq.com', // AP1
 };
+
 const TARGET = ORIGINS[SITE] || ORIGINS['datadoghq.com'];
 
 // 2) Debug logging toggle
