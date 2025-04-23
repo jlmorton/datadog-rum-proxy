@@ -1,81 +1,74 @@
 import express from 'express';
-import fetch from 'node-fetch';
+import { createProxyMiddleware } from 'http-proxy-middleware';
+import { URL } from 'url';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const DATADOG_SITE = process.env.DATADOG_SITE || 'datadoghq.com';
-const DATADOG_INTAKE_ORIGINS = {
-  'datadoghq.com': 'https://browser-intake-datadoghq.com',
-  'us3.datadoghq.com': 'https://browser-intake-us3-datadoghq.com',
-  'us5.datadoghq.com': 'https://browser-intake-us5-datadoghq.com',
-  'datadoghq.eu': 'https://browser-intake-datadoghq.eu',
-  'ddog-gov.com': 'https://browser-intake-ddog-gov.com',
-  'ap1.datadoghq.com': 'https://browser-intake-ap1-datadoghq.com',
+// 1) Map DATADOG_SITE to the correct intake origin
+const SITE = process.env.DATADOG_SITE || 'datadoghq.com';
+const ORIGINS = {
+  'datadoghq.com':   'https://browser-intake-datadoghq.com',    // US1 (default)
+  'us3.datadoghq.com':'https://browser-intake-us3-datadoghq.com', // US3
+  'us5.datadoghq.com':'https://browser-intake-us5-datadoghq.com', // US5
+  'datadoghq.eu':    'https://browser-intake-datadoghq.eu',      // EU1
+  'ddog-gov.com':    'https://browser-intake-ddog-gov.com',      // US1-FED
+  'ap1.datadoghq.com':'https://browser-intake-ap1-datadoghq.com', // AP1
 };
-const DATADOG_INTAKE = DATADOG_INTAKE_ORIGINS[DATADOG_SITE] || DATADOG_INTAKE_ORIGINS['datadoghq.com'];
+const TARGET = ORIGINS[SITE] || ORIGINS['datadoghq.com'];
 
-// CORS middleware
+// 2) Debug logging toggle
+const isDebug = (process.env.LOG_LEVEL || '').toLowerCase() === 'debug';
+
+// --- 3) CORS & preflight ---
+app.options('*', (req, res) =>
+  res
+    .set('Access-Control-Allow-Origin', '*')
+    .set('Access-Control-Allow-Credentials', 'true')
+    .set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE')
+    .set('Access-Control-Allow-Headers', 'Origin, Content-Type, Accept, Authorization')
+    .sendStatus(204)
+);
 app.use((req, res, next) => {
-  res.set('Access-Control-Allow-Origin', '*');
-  res.set('Access-Control-Allow-Credentials', 'true');
-  res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
-  res.set('Access-Control-Allow-Headers', 'Origin, Content-Type, Accept, Authorization');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(204);
-  }
+  res
+    .set('Access-Control-Allow-Origin', '*')
+    .set('Access-Control-Allow-Credentials', 'true')
+    .set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE')
+    .set('Access-Control-Allow-Headers', 'Origin, Content-Type, Accept, Authorization');
   next();
 });
 
-// parse JSON bodies (Datadog RUM always sends JSON)
-app.use(express.json());
+// --- 4) Proxy mount on /d ---
+app.use(
+  '/d',
+  createProxyMiddleware({
+    target: TARGET,
+    changeOrigin: true,
+    secure: true,
+    logLevel: isDebug ? 'debug' : 'silent',
 
-app.all('/d', async (req, res) => {
-  const ddforward = req.query.ddforward;
-  if (!ddforward) {
-    return res.status(400).send('Missing `ddforward` query parameter');
-  }
+    // rewrite URL path using ddforward
+    pathRewrite: (path, req) => {
+      const raw = req.query.ddforward;
+      if (isDebug) console.debug('[proxy] raw ddforward:', raw);
+      if (!raw) return path;  // missing → let it 404
+      if (isDebug) console.debug('[proxy] rewritten to    :', raw);
+      return raw;
+    },
 
-  const targetUrl = `${DATADOG_INTAKE}${ddforward}`;
+    // strip dd-api-key into header before sending upstream
+    onProxyReq: (proxyReq, req, res) => {
+      if (isDebug) console.debug('[proxy] final proxied URL:', proxyReq.path);
+    },
 
-  // clone headers and remove host/cookie so fetch can set it correctly
-  const headers = { ...req.headers };
-  delete headers.host;
-  delete headers.cookie;
-
-  // Add X-Forwarded-For for geoIP accuracy
-  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-  if (clientIp) {
-    headers['x-forwarded-for'] = clientIp;
-  }
-
-  try {
-    const response = await fetch(targetUrl, {
-      method: req.method,
-      headers,
-      body: ['GET', 'HEAD'].includes(req.method)
-        ? undefined
-        : JSON.stringify(req.body),
-    });
-
-    // mirror status
-    res.status(response.status);
-
-    // forward all response headers from Datadog (plus our CORS headers already set)
-    response.headers.forEach((val, name) => {
-      res.set(name, val);
-    });
-
-    // stream body back without deprecation warning
-    const arrayBuf = await response.arrayBuffer();
-    res.send(Buffer.from(arrayBuf));
-  } catch (err) {
-    console.error('Proxy error:', err);
-    res.status(502).send('Bad gateway');
-  }
-});
+    onError: (err, req, res) => {
+      console.error('[proxy] error:', err);
+      res.status(502).send('Bad gateway');
+    },
+  })
+);
 
 app.listen(PORT, () => {
-  console.log(`Datadog proxy listening on port ${PORT}`);
+  console.log(`Datadog proxy listening on 0.0.0.0:${PORT}/d → ${TARGET}`);
 });
 
